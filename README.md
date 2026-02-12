@@ -6,7 +6,7 @@ This is the pattern most Apple developers struggle with. There is no clean, end-
 
 > Extracted from [ToMe](https://framara.net/projects/ToMe), an iOS app for saving and organizing content from anywhere.
 
-<video src="https://github.com/framara/SwiftDataSharing/raw/main/demo.mp4" width="300"></video>
+https://github.com/user-attachments/assets/69198c9e-e8db-4633-885c-1797e4e02fa4
 
 ## The Problem
 

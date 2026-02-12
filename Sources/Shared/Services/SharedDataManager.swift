@@ -12,7 +12,7 @@
 //  1. Storing the database inside the App Group container so every target
 //     can access it.
 //  2. Using `ModelConfiguration(url:)` to point all targets at the same file.
-//  3. Using `ToMeMigrationPlan` everywhere so schema versions stay in sync.
+//  3. Using `AppMigrationPlan` everywhere so schema versions stay in sync.
 //
 //  USAGE
 //  -----

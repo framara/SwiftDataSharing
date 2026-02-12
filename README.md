@@ -1,8 +1,10 @@
 # SwiftData + App Group Sharing
 
-A minimal reference project showing how to **share a single SwiftData database between an iOS app, a Share Extension, and a Widget** using App Groups.
+A minimal, working reference project showing how to **share a single SwiftData database between an iOS app, a Share Extension, and a Widget** using App Groups.
 
-This is the pattern most Apple developers struggle with and there is no clean, end-to-end example. This repo is that example.
+This is the pattern most Apple developers struggle with. There is no clean, end-to-end example in Apple's documentation. This repo is that example.
+
+> Extracted from [ToMe](https://framara.net/projects/ToMe), an iOS app for saving and organizing content from anywhere.
 
 ## The Problem
 
@@ -14,7 +16,7 @@ You have three targets that need to access the same data:
 | Share Extension | Read / Write | Runs in a separate process, needs the same DB |
 | Widget | **Read-only** | Runs on background threads, must not write or sync |
 
-SwiftData defaults to storing the database in the app's private sandbox, which extensions and widgets cannot access.
+SwiftData stores the database in the app's private sandbox by default. Extensions and widgets **cannot access it**.
 
 ## The Solution
 
@@ -29,119 +31,157 @@ let groupURL = FileManager.default.containerURL(
 let storeURL = groupURL.appendingPathComponent("AppData.sqlite")
 ```
 
-### 2. Shared `ModelConfiguration`
+### 2. Shared ModelConfiguration
 
 ```swift
 let config = ModelConfiguration(
     schema: schema,
     url: storeURL,
-    cloudKitDatabase: .none // or .automatic for the main app
+    cloudKitDatabase: .none   // or .automatic for the main app
 )
 ```
 
-### 3. Two Entry Points
+### 3. Two Container Managers
 
-| Entry Point | Used By | Thread Safety |
-|-------------|---------|---------------|
-| `SharedDataManager` (`@MainActor`, singleton) | App + Share Extension | MainActor-isolated |
-| `WidgetDataManager` (`actor`, singleton) | Widget only | Actor-isolated for background |
+| Manager | Used By | Isolation | Why |
+|---------|---------|-----------|-----|
+| `SharedDataManager` | App + Share Extension | `@MainActor` singleton | Both run on the main thread |
+| `WidgetDataManager` | Widget only | `actor` singleton | Widget runs on background threads |
 
 ### 4. Schema Migration Plan
 
-All targets use the same `AppMigrationPlan` so the schema chain is consistent everywhere. This prevents the widget from seeing an unrecognized schema version and failing silently.
+All targets share the same `AppMigrationPlan` so the schema chain is consistent everywhere. This prevents the widget from crashing on an unrecognized schema version.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  App Group Container             │
-│                                                  │
-│    ┌──────────────────────────────────────┐      │
-│    │          AppData.sqlite              │      │
-│    └──────────────────────────────────────┘      │
-│         ▲              ▲              ▲           │
-│         │              │              │           │
-│    Read/Write     Read/Write      Read-only      │
-│         │              │              │           │
-│  ┌──────────┐  ┌──────────────┐  ┌─────────┐    │
-│  │ Main App │  │   Share Ext  │  │  Widget  │    │
-│  └──────────┘  └──────────────┘  └─────────┘    │
-│         │              │              │           │
-│  SharedDataManager  SharedDataManager  WidgetData│
-│  (@MainActor)       (@MainActor)     Manager     │
-│                                      (actor)     │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                   App Group Container                 │
+│                                                       │
+│       ┌──────────────────────────────────┐            │
+│       │         AppData.sqlite           │            │
+│       └──────────────────────────────────┘            │
+│            ▲              ▲              ▲             │
+│            │              │              │             │
+│       Read/Write     Read/Write      Read-only        │
+│            │              │              │             │
+│     ┌──────────┐  ┌──────────────┐  ┌──────────┐     │
+│     │ Main App │  │  Share Ext   │  │  Widget   │     │
+│     └──────────┘  └──────────────┘  └──────────┘     │
+│            │              │              │             │
+│    SharedDataManager  SharedDataManager  WidgetData   │
+│     (@MainActor)      (@MainActor)      Manager      │
+│                                         (actor)       │
+└──────────────────────────────────────────────────────┘
 ```
 
-## Key Files
+## Project Structure
 
 ```
 Sources/
-├── Shared/                    # Added to ALL three targets
+├── Shared/                        ← All three targets
 │   ├── Models/
-│   │   ├── Folder.swift       # @Model - container for notes
-│   │   ├── Note.swift         # @Model - a saved piece of content
-│   │   ├── NoteType.swift     # Enum: text, link, image
-│   │   └── SchemaVersions.swift # Versioned schemas + migration plan
+│   │   ├── Folder.swift           # @Model — container for notes
+│   │   ├── Note.swift             # @Model — a saved piece of content
+│   │   ├── NoteType.swift         # Enum: text, link, image
+│   │   └── SchemaVersions.swift   # Versioned schemas + migration plan
 │   └── Services/
-│       └── SharedDataManager.swift  # Singleton container (App + Extension)
-├── App/                       # Main app target only
-│   ├── SwiftDataSharingApp.swift
-│   ├── ContentView.swift
-│   └── FolderDetailView.swift
-├── ShareExtension/            # Share Extension target only
-│   ├── ShareViewController.swift
-│   └── ShareView.swift
-└── Widget/                    # Widget target only
-    ├── WidgetDataManager.swift  # Actor-based read-only container
-    ├── NotesWidget.swift
-    └── NotesWidgetBundle.swift
+│       └── SharedDataManager.swift # Singleton container + widget reload
+│
+├── App/                           ← Main app only
+│   ├── SwiftDataSharingApp.swift  # Entry point + seed data
+│   ├── ContentView.swift          # Folder list
+│   └── FolderDetailView.swift     # Notes list + add
+│
+├── ShareExtension/                ← Share Extension only
+│   ├── ShareViewController.swift  # UIHostingController wrapper
+│   └── ShareView.swift            # Folder picker + content extraction
+│
+└── Widget/                        ← Widget only
+    ├── WidgetDataManager.swift    # Actor-based read-only container
+    ├── NotesWidget.swift          # Timeline provider + widget view
+    └── NotesWidgetBundle.swift    # Widget bundle entry point
 ```
 
 ## Quick Start
 
-The project uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) to generate the `.xcodeproj` from `project.yml`. This avoids messy pbxproj merge conflicts and makes the multi-target setup reproducible.
+The project uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) to generate the `.xcodeproj` from `project.yml`. This avoids `.pbxproj` merge conflicts and makes the multi-target setup reproducible.
 
 ```bash
 # 1. Install XcodeGen (if you don't have it)
 brew install xcodegen
 
-# 2. Generate the Xcode project
+# 2. Set your Development Team (required for extensions)
+#    Open project.yml and set DEVELOPMENT_TEAM to your team ID
+
+# 3. Generate the Xcode project
 xcodegen generate
 
-# 3. Open and run
+# 4. Open and run
 open SwiftDataSharing.xcodeproj
 ```
 
-### Configure for your team
+### Why is the Development Team required?
 
-1. Open the project in Xcode and set your **Development Team** on all 3 targets
-2. Update the App Group identifier in `AppConstants.appGroupID` (in `SharedDataManager.swift`) and in `project.yml` to match your team's provisioning
+Extensions (Share Extension, Widget) must be properly code-signed for the OS to register them. Without a valid `DEVELOPMENT_TEAM`:
+
+- `pluginkit` won't discover the Share Extension
+- The extension **won't appear** in the share sheet
+- This applies even on the Simulator
+
+Set your team ID in `project.yml` at `settings.base.DEVELOPMENT_TEAM`. You can find it in Xcode under **Signing & Capabilities**, or in your [Apple Developer account](https://developer.apple.com/account).
+
+### Customizing for your app
+
+1. Set `DEVELOPMENT_TEAM` in `project.yml`
+2. Update the App Group ID in `AppConstants.appGroupID` (`SharedDataManager.swift`) and in all three entitlements entries in `project.yml`
 3. Regenerate: `xcodegen generate`
 
-### Target Membership
+## Key Patterns
 
-XcodeGen handles this automatically via `project.yml`. For reference:
+### Writing data (App + Share Extension)
 
-| File | App | Share Ext | Widget |
-|------|-----|-----------|--------|
-| `Shared/Models/*` | Yes | Yes | Yes |
-| `Shared/Services/SharedDataManager.swift` | Yes | Yes | Yes |
-| `App/*` | Yes | - | - |
-| `ShareExtension/*` | - | Yes | - |
-| `Widget/WidgetDataManager.swift` | - | - | Yes |
-| `Widget/NotesWidget.swift` | - | - | Yes |
-| `Widget/NotesWidgetBundle.swift` | - | - | Yes |
+```swift
+let context = ModelContext(SharedDataManager.shared.container)
+let note = Note(type: .text, text: "Hello")
+note.folder = someFolder
+context.insert(note)
+try context.save()
+SharedDataManager.shared.reloadWidgets()  // Always reload after save
+```
+
+### Reading data (Widget)
+
+```swift
+// Widget uses an actor — safe for background threads
+let container = try await WidgetDataManager.shared.getContainer()
+let context = ModelContext(container)
+let notes = try context.fetch(FetchDescriptor<Note>())
+```
+
+### Share Extension activation
+
+The Share Extension uses a proper `NSExtensionActivationRule` dictionary (not `TRUEPREDICATE`) to declare supported content types:
+
+```xml
+NSExtensionActivationSupportsText = YES
+NSExtensionActivationSupportsWebURLWithMaxCount = 1
+NSExtensionActivationSupportsWebPageWithMaxCount = 1
+NSExtensionActivationSupportsImageWithMaxCount = 10
+NSExtensionActivationSupportsFileWithMaxCount = 10
+```
+
+> `TRUEPREDICATE` is a development shortcut that Apple rejects on App Store submission. It may also cause the extension to not appear on newer iOS versions.
 
 ## Schema Migrations
 
 When you need to add a field after your first release:
 
 ```swift
-// 1. Add the optional field to the live model
+// 1. Add the optional field to the model
 @Model final class Note {
     // ... existing fields ...
-    var subtitle: String? = nil  // NEW
+    var subtitle: String? = nil  // NEW — optional + default = lightweight migration
 }
 
 // 2. Create a new schema version
@@ -150,18 +190,44 @@ enum SchemaV2: VersionedSchema {
     static var models: [any PersistentModel.Type] { [Folder.self, Note.self] }
 }
 
-// 3. Add V2 to the migration plan (keep V1!)
+// 3. Add to the migration plan (never remove old versions)
 enum AppMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self, SchemaV2.self]  // NEVER remove old versions
+        [SchemaV1.self, SchemaV2.self]
     }
     static var stages: [MigrationStage] { [] }  // Additive optionals = automatic
 }
 
-// 4. Update SharedDataManager and WidgetDataManager to use SchemaV2
+// 4. Update SharedDataManager and WidgetDataManager to reference SchemaV2
 ```
 
-For **breaking changes** (renaming fields, changing types), see the template in `SchemaVersions.swift`.
+For **breaking changes** (renaming fields, changing types), add a `MigrationStage.custom` block. See the template in `SchemaVersions.swift`.
+
+## Common Pitfalls
+
+| Pitfall | Solution |
+|---------|----------|
+| Share Extension not in share sheet | Set a valid `DEVELOPMENT_TEAM` and use a proper activation rule dictionary (not `TRUEPREDICATE`) |
+| Widget shows stale data | Call `WidgetCenter.shared.reloadAllTimelines()` after every save |
+| Share Extension can't find DB | Both targets must have the same App Group in entitlements |
+| Widget crashes on background thread | Use an `actor` (`WidgetDataManager`), not `@MainActor` |
+| Migration fails silently | Include ALL schema versions in `AppMigrationPlan.schemas` |
+| iCloud conflicts in widget | Set `cloudKitDatabase: .none` in the widget — only the main app should sync |
+| Swift 6 actor isolation error | Shared constants (like App Group ID) must live outside `@MainActor` classes — use a plain `enum` namespace |
+| App renders in small window | Include `UILaunchScreen` in the app's Info.plist (set via `INFOPLIST_KEY_UILaunchScreen_Generation: YES`) |
+
+## Adding iCloud Sync
+
+To enable CloudKit sync for the main app:
+
+```swift
+// In SharedDataManager, change:
+cloudKitDatabase: .none
+// to:
+cloudKitDatabase: .automatic
+```
+
+The Share Extension can also use `.automatic` if it writes data that should sync. The Widget should **always** use `.none`.
 
 ## Requirements
 
@@ -170,35 +236,9 @@ For **breaking changes** (renaming fields, changing types), see the template in 
 - Swift 6
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
-## Common Pitfalls
-
-| Pitfall | Solution |
-|---------|----------|
-| Widget shows stale data | Call `WidgetCenter.shared.reloadAllTimelines()` after every save |
-| Share extension can't find DB | Ensure both targets have the same App Group enabled |
-| Widget crashes on background thread | Use an `actor` (WidgetDataManager), not `@MainActor` |
-| Migration fails silently | Include ALL schema versions in `AppMigrationPlan.schemas` |
-| iCloud conflicts in widget | Set `cloudKitDatabase: .none` in the widget — only the main app syncs |
-| Swift 6 actor isolation error | Shared constants (like App Group ID) must live outside `@MainActor` classes — use a plain `enum` namespace |
-
-## Adding iCloud Sync
-
-To enable CloudKit sync for the main app:
-
-```swift
-// In SharedDataManager.createContainer():
-let config = ModelConfiguration(
-    schema: schema,
-    url: storeURL,
-    cloudKitDatabase: .automatic  // Enable iCloud sync
-)
-```
-
-The Share Extension can also use `.automatic` if it writes data that should sync. The Widget should always use `.none`.
-
 ## Credits
 
-Extracted from [ToMe](https://horchatastudio.com/app/tome), an iOS app for saving and organizing content.
+Extracted from [ToMe](https://framara.net/projects/ToMe) by [framara](https://framara.net).
 
 ## License
 

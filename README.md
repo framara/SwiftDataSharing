@@ -56,25 +56,17 @@ All targets share the same `AppMigrationPlan` so the schema chain is consistent 
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│                   App Group Container                 │
-│                                                       │
-│       ┌──────────────────────────────────┐            │
-│       │         AppData.sqlite           │            │
-│       └──────────────────────────────────┘            │
-│            ▲              ▲              ▲             │
-│            │              │              │             │
-│       Read/Write     Read/Write      Read-only        │
-│            │              │              │             │
-│     ┌──────────┐  ┌──────────────┐  ┌──────────┐     │
-│     │ Main App │  │  Share Ext   │  │  Widget   │     │
-│     └──────────┘  └──────────────┘  └──────────┘     │
-│            │              │              │             │
-│    SharedDataManager  SharedDataManager  WidgetData   │
-│     (@MainActor)      (@MainActor)      Manager      │
-│                                         (actor)       │
-└──────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph App Group Container
+        DB[(AppData.sqlite)]
+        DB -->|Read / Write| A[Main App]
+        DB -->|Read / Write| B[Share Extension]
+        DB -->|Read-only| C[Widget]
+    end
+    A --- D["SharedDataManager<br/><i>@MainActor</i>"]
+    B --- E["SharedDataManager<br/><i>@MainActor</i>"]
+    C --- F["WidgetDataManager<br/><i>actor</i>"]
 ```
 
 ## Project Structure

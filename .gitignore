@@ -18,6 +18,9 @@ build/
 Packages/
 Package.resolved
 
+# Source video
+*.mov
+
 # macOS
 .DS_Store
 *.swp

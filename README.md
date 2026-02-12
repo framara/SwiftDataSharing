@@ -6,6 +6,8 @@ This is the pattern most Apple developers struggle with. There is no clean, end-
 
 > Extracted from [ToMe](https://framara.net/projects/ToMe), an iOS app for saving and organizing content from anywhere.
 
+<video src="https://github.com/framara/SwiftDataSharing/raw/main/demo.mp4" width="300"></video>
+
 ## The Problem
 
 You have three targets that need to access the same data:

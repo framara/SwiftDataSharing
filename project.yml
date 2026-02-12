@@ -54,6 +54,7 @@ targets:
     info:
       path: ShareExtension/Resources/Info.plist
       properties:
+        CFBundleDisplayName: Save to App
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
@@ -83,6 +84,7 @@ targets:
     info:
       path: Widget/Resources/Info.plist
       properties:
+        CFBundleDisplayName: Notes Widget
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

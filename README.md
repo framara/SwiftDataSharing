@@ -33,6 +33,8 @@ let groupURL = FileManager.default.containerURL(
 let storeURL = groupURL.appendingPathComponent("AppData.sqlite")
 ```
 
+If the App Group cannot be resolved, the app now **fails fast** with a clear error instead of silently falling back to a local non-shared store. This protects the "single shared DB" guarantee.
+
 ### 2. Shared ModelConfiguration
 
 ```swift
@@ -130,6 +132,7 @@ Set your team ID in `project.yml` at `settings.base.DEVELOPMENT_TEAM`. You can f
 1. Set `DEVELOPMENT_TEAM` in `project.yml`
 2. Update the App Group ID in `AppConstants.appGroupID` (`SharedDataManager.swift`) and in all three entitlements entries in `project.yml`
 3. Regenerate: `xcodegen generate`
+4. Ensure the App Group exists and is enabled for all targets. There is no fallback store.
 
 ## Key Patterns
 
@@ -166,6 +169,12 @@ NSExtensionActivationSupportsFileWithMaxCount = 10
 ```
 
 > `TRUEPREDICATE` is a development shortcut that Apple rejects on App Store submission. It may also cause the extension to not appear on newer iOS versions.
+
+Saved note mapping in `ShareView`:
+
+- `public.plain-text` -> `NoteType.text`
+- `public.url` / `public.file-url` -> `NoteType.link`
+- `public.image` -> `NoteType.image`
 
 ## Schema Migrations
 
@@ -204,11 +213,13 @@ For **breaking changes** (renaming fields, changing types), add a `MigrationStag
 | Share Extension not in share sheet | Set a valid `DEVELOPMENT_TEAM` and use a proper activation rule dictionary (not `TRUEPREDICATE`) |
 | Widget shows stale data | Call `WidgetCenter.shared.reloadAllTimelines()` after every save |
 | Share Extension can't find DB | Both targets must have the same App Group in entitlements |
+| App crashes at launch with App Group error | Configure the same valid App Group in all three targets and in `AppConstants.appGroupID` |
 | Widget crashes on background thread | Use an `actor` (`WidgetDataManager`), not `@MainActor` |
 | Migration fails silently | Include ALL schema versions in `AppMigrationPlan.schemas` |
 | iCloud conflicts in widget | Set `cloudKitDatabase: .none` in the widget — only the main app should sync |
 | Swift 6 actor isolation error | Shared constants (like App Group ID) must live outside `@MainActor` classes — use a plain `enum` namespace |
 | App renders in small window | Include `UILaunchScreen` in the app's Info.plist (set via `INFOPLIST_KEY_UILaunchScreen_Generation: YES`) |
+| Extension version mismatch warning in Xcode | Keep extension plist versions tied to `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` |
 
 ## Adding iCloud Sync
 

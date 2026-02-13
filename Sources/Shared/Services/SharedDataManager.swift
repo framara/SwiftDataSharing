@@ -52,37 +52,20 @@ final class SharedDataManager {
     private static func createContainer() -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
 
-        // Strategy 1: App Group shared container (preferred)
-        if let groupURL = FileManager.default.containerURL(
+        guard let groupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: AppConstants.appGroupID
-        ) {
-            let storeURL = groupURL.appendingPathComponent("AppData.sqlite")
-
-            let config = ModelConfiguration(
-                schema: schema,
-                url: storeURL,
-                cloudKitDatabase: .none // Set to .automatic for iCloud sync
-            )
-
-            do {
-                return try ModelContainer(
-                    for: schema,
-                    migrationPlan: AppMigrationPlan.self,
-                    configurations: [config]
-                )
-            } catch {
-                print("[SharedDataManager] App Group container failed: \(error)")
-            }
+        ) else {
+            fatalError("""
+                [SharedDataManager] Could not resolve App Group container for \(AppConstants.appGroupID).
+                Ensure the App Group exists and is enabled for the app, share extension, and widget targets.
+                """)
         }
 
-        // Strategy 2: Fallback to Documents directory (no sharing)
-        print("[SharedDataManager] Falling back to local Documents directory.")
-        let localURL = URL.documentsDirectory.appendingPathComponent("AppData.sqlite")
-
+        let storeURL = groupURL.appendingPathComponent(AppConstants.databaseFileName)
         let config = ModelConfiguration(
             schema: schema,
-            url: localURL,
-            cloudKitDatabase: .none
+            url: storeURL,
+            cloudKitDatabase: .none // Set to .automatic for iCloud sync
         )
 
         do {
@@ -92,7 +75,7 @@ final class SharedDataManager {
                 configurations: [config]
             )
         } catch {
-            fatalError("[SharedDataManager] Could not create any container: \(error)")
+            fatalError("[SharedDataManager] Could not create shared App Group container: \(error)")
         }
     }
 

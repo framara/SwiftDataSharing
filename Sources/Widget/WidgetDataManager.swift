@@ -21,9 +21,14 @@ import SwiftData
 
 actor WidgetDataManager {
     static let shared = WidgetDataManager()
+    private var container: ModelContainer?
     private init() {}
 
     func getContainer() throws -> ModelContainer {
+        if let container {
+            return container
+        }
+
         let schema = Schema(versionedSchema: SchemaV1.self)
 
         guard let groupURL = FileManager.default.containerURL(
@@ -32,18 +37,20 @@ actor WidgetDataManager {
             throw WidgetError.noAppGroup
         }
 
-        let storeURL = groupURL.appendingPathComponent("AppData.sqlite")
+        let storeURL = groupURL.appendingPathComponent(AppConstants.databaseFileName)
         let config = ModelConfiguration(
             schema: schema,
             url: storeURL,
             cloudKitDatabase: .none // Widgets only read, never sync.
         )
 
-        return try ModelContainer(
+        let newContainer = try ModelContainer(
             for: schema,
             migrationPlan: AppMigrationPlan.self,
             configurations: [config]
         )
+        container = newContainer
+        return newContainer
     }
 }
 

@@ -11,6 +11,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ShareView: View {
     let extensionContext: NSExtensionContext?
@@ -21,6 +22,13 @@ struct ShareView: View {
 
     @State private var isProcessing = false
     @State private var isSaved = false
+
+    private struct SharedContent {
+        let type: NoteType
+        let text: String?
+        let url: URL?
+        let title: String?
+    }
 
     var body: some View {
         NavigationStack {
@@ -70,8 +78,18 @@ struct ShareView: View {
 
         // Extract shared content from the extension context.
         Task {
-            let sharedText = await extractSharedText()
-            let note = Note(type: .text, text: sharedText ?? "Shared item")
+            let content = await extractSharedContent()
+            let note: Note
+            if let content {
+                note = Note(
+                    type: content.type,
+                    text: content.text,
+                    url: content.url,
+                    title: content.title
+                )
+            } else {
+                note = Note(type: .text, text: "Shared item")
+            }
             note.folder = folder
             modelContext.insert(note)
 
@@ -90,8 +108,8 @@ struct ShareView: View {
         }
     }
 
-    /// Extracts plain-text content from the share extension input items.
-    private func extractSharedText() async -> String? {
+    /// Extracts supported content from the share extension input items.
+    private func extractSharedContent() async -> SharedContent? {
         guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
             return nil
         }
@@ -99,20 +117,57 @@ struct ShareView: View {
         for item in items {
             guard let attachments = item.attachments else { continue }
             for provider in attachments {
-                if provider.hasItemConformingToTypeIdentifier("public.plain-text") {
+                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                     let result = try? await provider.loadItem(
-                        forTypeIdentifier: "public.plain-text"
+                        forTypeIdentifier: UTType.plainText.identifier
                     )
-                    if let text = result as? String {
-                        return text
+                    if let text = result as? String, !text.isEmpty {
+                        return SharedContent(type: .text, text: text, url: nil, title: nil)
                     }
                 }
-                if provider.hasItemConformingToTypeIdentifier("public.url") {
+
+                if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                     let result = try? await provider.loadItem(
-                        forTypeIdentifier: "public.url"
+                        forTypeIdentifier: UTType.url.identifier
                     )
                     if let url = result as? URL {
-                        return url.absoluteString
+                        let title = url.isFileURL ? url.lastPathComponent : (url.host() ?? "Link")
+                        return SharedContent(type: .link, text: nil, url: url, title: title)
+                    }
+                }
+
+                if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                    let result = try? await provider.loadItem(
+                        forTypeIdentifier: UTType.image.identifier
+                    )
+                    if let imageURL = result as? URL {
+                        return SharedContent(
+                            type: .image,
+                            text: nil,
+                            url: nil,
+                            title: imageURL.lastPathComponent
+                        )
+                    }
+                    if let suggestedName = provider.suggestedName, !suggestedName.isEmpty {
+                        return SharedContent(type: .image, text: nil, url: nil, title: suggestedName)
+                    }
+                    return SharedContent(type: .image, text: nil, url: nil, title: "Shared image")
+                }
+
+                if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                    let result = try? await provider.loadItem(
+                        forTypeIdentifier: UTType.fileURL.identifier
+                    )
+                    if let fileURL = result as? URL {
+                        return SharedContent(
+                            type: .link,
+                            text: nil,
+                            url: fileURL,
+                            title: fileURL.lastPathComponent
+                        )
+                    }
+                    if let suggestedName = provider.suggestedName, !suggestedName.isEmpty {
+                        return SharedContent(type: .link, text: nil, url: nil, title: suggestedName)
                     }
                 }
             }
